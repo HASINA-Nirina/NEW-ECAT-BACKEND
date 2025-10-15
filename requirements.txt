@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+psycopg2-binary
+sqlalchemy>=1.4
+alembic
+python-dotenv
+passlib[bcrypt]
+python-jose[cryptography]
+pydantic
+typing-extensions
