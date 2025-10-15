@@ -11,3 +11,11 @@ typing-extensions
 python-dotenv
 psycopg2-binary
 passlib[bcrypt]
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+alembic
+pydantic[email]
+python-dotenv
+passlib[bcrypt]
