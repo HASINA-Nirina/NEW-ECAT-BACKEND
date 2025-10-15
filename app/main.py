@@ -1,5 +1,5 @@
 # app/main.py
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from . import db, models, crud, schemas, auth
 from dotenv import load_dotenv
@@ -11,6 +11,7 @@ app = FastAPI(title="Site ECAT Backend - Step1")
 
 # create tables (for dev only) - better to use Alembic later
 models.Base.metadata.create_all(bind=db.engine)
+
 
 @app.post("/register", response_model=schemas.UserOut)
 def register(user_in: schemas.UserCreate, db_s: Session = Depends(db.get_db)):
@@ -28,28 +29,27 @@ def register(user_in: schemas.UserCreate, db_s: Session = Depends(db.get_db)):
         created.status = models.AccountStatus.accepted
     elif role == models.RoleEnum.admin_local:
         created.status = models.AccountStatus.pending
-    # admin_super registration not allowed via endpoint; check role input
+    # admin_super registration not allowed via endpoint
     db_s.add(created)
     db_s.commit()
     db_s.refresh(created)
     return created
 
-@app.post("/login", response_model=schemas.Token)
-def login(form_data: schemas.UserCreate, db_s: Session = Depends(db.get_db)):
-    # Here reuse schemas.UserCreate to receive username/email+password
-    user = crud.get_user_by_username(db_s, form_data.username) or crud.get_user_by_email(db_s, form_data.email)
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-    if user.status != models.AccountStatus.accepted:
-        # explicit messages for pending/rejected
-        if user.status == models.AccountStatus.pending:
-            raise HTTPException(status_code=403, detail="Compte en attente de validation par l'admin super.")
-        else:
-            raise HTTPException(status_code=403, detail="Compte refusé. Contactez l'administrateur.")
-    if not crud.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-    token = auth.create_access_token({"sub": str(user.id), "role": user.role.value})
-    return {"access_token": token, "token_type": "bearer"}
+
+# --- LOGIN CORRIGÉ ---
+@app.post("/auth/login")
+def login(user: schemas.UserLoginSchema, db_s: Session = Depends(db.get_db)):
+    db_user = db_s.query(models.User).filter(models.User.email == user.email).first()
+
+    if not db_user:
+        return {"error": "Email invalide"}  # message explicite pour le frontend
+
+    if not crud.verify_password(user.mot_de_passe, db_user.hashed_password):
+        return {"error": "Mot de passe incorrect"}
+
+    # Vérifie le rôle pour redirection côté frontend
+    return {"role": db_user.role.value}
+
 
 # Admin-super endpoint to accept/reject admin_local
 @app.post("/admin/validate/{user_id}")
@@ -63,7 +63,6 @@ def validate_admin_local(user_id: int, action: str, db_s: Session = Depends(db.g
     if action == "accept":
         user.status = models.AccountStatus.accepted
         db_s.commit()
-        # In real app -> send notification/email
         return {"detail": "Compte admin_local accepté et activé."}
     elif action == "reject":
         user.status = models.AccountStatus.rejected
